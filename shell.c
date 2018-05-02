@@ -80,6 +80,21 @@ int main(int argc, char** argv) {
                         // so we'll do it the same way.
                         fprintf(stderr, "pwd: too many arguments\n");
                     }
+                } else if (strcmp(token, "cd") == 0) {
+                    // Check if a directory was given
+                    token = strtok(NULL, delim);
+                    // Use "HOME" if no directory given, otherwise use the given one
+                    char* dir = (token == NULL ? getenv("HOME") : token);
+                    // Check if any other arguments were given
+                    token = strtok(NULL, delim);
+                    if (token != NULL) {
+                        fprintf(stderr, "cd: too many arguments\n");
+                    } else if (chdir(dir) == -1) {
+                        // Call to `cd` was valid but an error occurred
+                        // Print the error message associated with errno
+                        // The argument to perror() is the prefix to the error message
+                        perror("cd");
+                    }
                 }
             }
         }
