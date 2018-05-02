@@ -58,6 +58,7 @@ int main(int argc, char** argv) {
             if (token != NULL) {
                 if (strcmp(token, "exit") == 0) {
                     // Make sure the full command was just "exit"
+                    // Passing NULL tells it to use the previous string
                     token = strtok(NULL, delim);
                     if (token == NULL) {
                         exit(EXIT_SUCCESS);
@@ -66,6 +67,18 @@ int main(int argc, char** argv) {
                         // just with a failing exit code.
                         fprintf(stderr, "%s: exit takes no arguments\n", prog_name);
                         exit(EXIT_FAILURE);
+                    }
+                } else if (strcmp(token, "pwd") == 0) {
+                    // Make sure the full command was just "pwd"
+                    // Passing NULL tells it to use the previous string
+                    token = strtok(NULL, delim);
+                    if (token == NULL) {
+                        // We already have the current working directory: print it
+                        printf("%s\n", cwd);
+                    } else {
+                        // This is the error that bash prints. It's the right error,
+                        // so we'll do it the same way.
+                        fprintf(stderr, "pwd: too many arguments\n");
                     }
                 }
             }
