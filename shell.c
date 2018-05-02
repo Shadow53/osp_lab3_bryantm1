@@ -4,8 +4,10 @@
 #include "stdbool.h"
 #include "unistd.h"
 
+const char* const prog_name = "falsh";
 const char* const prog_usage = "Usage: falsh [-h]\n";
 char* cwd = NULL;
+const char* const delim = " \n\t\v\f\r";
 
 
 // find_in_path finds searches the PATH for the given command and
@@ -38,7 +40,35 @@ int main(int argc, char** argv) {
         // Only parse input if there is any input
         // This check basically avoids issues on first iteration
         if (line != NULL) {
-            // Do some stuff and be useful
+            // In the upcoming call to strtok, we don't care about
+            // the trailing newline, which will cause strtok to return
+            // the newline instead of NULL. Replace the newline with NULL
+            if (line[strlen(line) - 1] == '\n') {
+                line[strlen(line) - 1] = 0;
+            }
+
+            // Tokenize the input string
+            char* token = NULL;
+            // strtok returns the first token in the string,
+            // delimited by a space character, or NULL if the string
+            // is empty or is all delimiters.
+            token = strtok(line, delim);
+
+            // Check values of token
+            if (token != NULL) {
+                if (strcmp(token, "exit") == 0) {
+                    // Make sure the full command was just "exit"
+                    token = strtok(NULL, delim);
+                    if (token == NULL) {
+                        exit(EXIT_SUCCESS);
+                    } else {
+                        // bash prints an error message and exits anyways,
+                        // just with a failing exit code.
+                        fprintf(stderr, "%s: exit takes no arguments\n", prog_name);
+                        exit(EXIT_FAILURE);
+                    }
+                }
+            }
         }
 
         // Get current working directory
