@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 const char* const prog_name = "falsh";
 const char* const prog_usage = "Usage: falsh [-h]\n";
@@ -247,6 +248,59 @@ int main(int argc, char** argv) {
                                 // Print error
                                 perror("setpath");
                             }
+                        }
+                    }
+                } else {
+                    // It was none of the built-in commands, try running from $PATH
+                    // Fork child
+                    int fork_rc = fork();
+                    if (fork_rc == -1) {
+                        // Fork failed, print error and be done
+                        perror("falsh");
+                    } else if (fork_rc == 0) {
+                        // Allocate an array of arguments
+                        int len = 1;
+                        char** eargs = (char**)malloc(sizeof(char*));
+                        //eargs[0] = (char*)malloc((strlen(token) + 1)*sizeof(char));
+                        //strcpy(eargs[0], token);
+                        eargs[0] = token;
+                        while ((token = strtok(NULL, delim)) != NULL) {
+                            // Increment length
+                            ++len;
+                            // Reallocate memory
+                            if (realloc(eargs, len * sizeof(char*)) == NULL) {
+                                // Reallocation failed
+                                perror(eargs[0]);
+                            }
+                            // Allocate memory for new string
+                            // eargs[len-1] = (char*)malloc((strlen(token) + 1) * sizeof(char));
+                            // strcpy(eargs[len-1], token);
+                            eargs[len-1] = token;
+                        }
+                        // NULL-terminate the list
+                        if (realloc(eargs, (len+1) * sizeof(char*)) == NULL) {
+                            // Reallocation failed
+                            perror(eargs[0]);
+                        } else {
+                            eargs[len] = NULL;
+                        }
+
+                        // exec() the program
+                        execvp(eargs[0], eargs);
+                        // This only does anything if an error occurs
+                        perror(eargs[0]);
+                        exit(EXIT_FAILURE);
+                    } else {
+                        // child_status will hold the exit code of the forked child
+                        int child_status;
+                        // Wait for only child to exit
+                        int wc = wait(&child_status);
+                        // Check the status code
+                        // WIFEXITED is true if child exited normally
+                        if (WIFEXITED(child_status)) {
+                            // WEXITSTATUS returns the code returned by the child
+                            // 0 is success, so anything else was an error
+                            has_error = WEXITSTATUS(child_status) != 0;
                         }
                     }
                 }
