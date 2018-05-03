@@ -8,6 +8,13 @@
 
 const char* const prog_name = "falsh";
 const char* const prog_usage = "Usage: falsh [-h]\n";
+const char* const prog_help =   "SPU Falsh, version 0.0.1-alpha\n"
+                                "These shell commands are defined internally. Type `help` to see this list.\n\n"
+                                "help\n"
+                                "exit\n"
+                                "pwd\n"
+                                "cd [dir]\n"
+                                "setpath <dir> [dir ...]\n";
 char* cwd = NULL;
 const char* const delim = " \n\t\v\f\r";
 
@@ -158,7 +165,13 @@ int main(int argc, char** argv) {
 
             // Check values of token
             if (token != NULL) {
-                if (strcmp(token, "exit") == 0) {
+                if (strcmp(token, "help") == 0) {
+                    // Print the help text.
+                    // No check for any extra arguments, because if the user
+                    // is asking for help, we should give it regardless of
+                    // how confused they are.
+                    printf("%s", prog_help);
+                } else if (strcmp(token, "exit") == 0) {
                     // Make sure the full command was just "exit"
                     // Passing NULL tells it to use the previous string
                     token = strtok(NULL, delim);
