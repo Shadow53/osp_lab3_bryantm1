@@ -1,9 +1,9 @@
-#include "stdlib.h"
-#include "stdio.h"
-#include "string.h"
-#include "stdbool.h"
-#include "fcntl.h"
-#include "unistd.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdbool.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 const char* const prog_name = "falsh";
 const char* const prog_usage = "Usage: falsh [-h]\n";
