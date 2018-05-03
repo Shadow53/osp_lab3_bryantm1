@@ -4,11 +4,27 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 const char* const prog_name = "falsh";
 const char* const prog_usage = "Usage: falsh [-h]\n";
 char* cwd = NULL;
 const char* const delim = " \n\t\v\f\r";
+
+int is_same_fd(int fd1, int fd2) {
+    // Create two stat{} structs
+    struct stat stat1, stat2;
+    // Read file information into the structs and
+    // return -1 if an error occurs
+    if (fstat(fd1, &stat1) == -1) return -1;
+    if (fstat(fd2, &stat2) == -1) return -1;
+    // st_dev and st_ino together for a unique identifier for a file
+    if ((stat1.st_dev == stat2.st_dev) && (stat1.st_ino == stat2.st_ino)) {
+        return 1; // true but not -1
+    } else {
+        return 0; // false
+    }
+}
 
 int main(int argc, char** argv) {
     // Error if more than two args or if the second arg isn't help
@@ -239,14 +255,27 @@ int main(int argc, char** argv) {
         // redirection, because I can't undo the redirection?
 
         // First, flush the buffers
-        /*if (fsync(STDOUT_FILENO) == -1) {
+        int rc;
+        // Check if these are the same 
+        if ((rc = is_same_fd(stdout_save, STDOUT_FILENO)) == -1) {
+            // An error occurred while stat-ing a file
+            perror("falsh");
+        } else if (rc == 0 && fsync(STDOUT_FILENO) == -1) {
+            // Only flush if NOT the same
             // Failed to flush stdout to disc
             perror("falsh: failed to flush output to disc");
         }
-        if (fsync(STDERR_FILENO) == -1) {
+
+        // Check if these are the same
+        if ((rc = is_same_fd(stderr_save, STDERR_FILENO)) == -1) {
+            // An error occurred while stat-ing a file
+            perror("falsh");
+        } else if (rc == 0 && fsync(STDERR_FILENO) == -1) {
+            // Only flush if NOT the same
             // Failed to flush stderr to disc
             perror("falsh: failed to flush errors to disc");
-        }*/
+        }
+
         if (dup2(stdout_save, STDOUT_FILENO) == -1) {
             // Failed to restore stdout
             perror("falsh: failed to restore stdout");
