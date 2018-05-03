@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include "color.h"
 
 const char* const prog_name = "falsh";
 const char* const prog_usage = "Usage: falsh [-h]\n";
@@ -58,19 +59,18 @@ int main(int argc, char** argv) {
     const int stderr_save = dup(STDERR_FILENO);
 
     // Store if an error occurred
-    bool has_error;
+    bool has_error = false;
 
     // Initially set PATH to /bin
     if (setenv("PATH", "/bin", true) == -1) {
         // Print error if error occurred
         perror("falsh: PATH");
+        // Error occurred
+        has_error = true;
     }
 
     // do-while prints the prompt once before reading input
     do {
-        // Reset has_error
-        has_error = false;
-
         // Only parse input if there is any input
         // This check basically avoids issues on first iteration
         if (line != NULL) {
@@ -99,6 +99,7 @@ int main(int argc, char** argv) {
                 if (strtok(NULL, delim) != NULL) {
                     fprintf(stderr, "falsh: provide one file name for redirection\n");
                     line[0] = 0;
+                    has_error = true;
                 } else {
                     // Otherwise, set up redirection
                     // Build strings for the file names
@@ -195,6 +196,7 @@ int main(int argc, char** argv) {
                         // This is the error that bash prints. It's the right error,
                         // so we'll do it the same way.
                         fprintf(stderr, "pwd: too many arguments\n");
+                        has_error = true;
                     }
                 } else if (strcmp(token, "cd") == 0) {
                     // Check if a directory was given
@@ -205,11 +207,13 @@ int main(int argc, char** argv) {
                     token = strtok(NULL, delim);
                     if (token != NULL) {
                         fprintf(stderr, "cd: too many arguments\n");
+                        has_error = true;
                     } else if (chdir(dir) == -1) {
                         // Call to `cd` was valid but an error occurred
                         // Print the error message associated with errno
                         // The argument to perror() is the prefix to the error message
                         perror("cd");
+                        has_error = true;
                     }
                 } else if (strcmp(token, "setpath") == 0) {
                     if ((token = strtok(NULL, delim)) == NULL) {
@@ -218,6 +222,7 @@ int main(int argc, char** argv) {
                         if (setenv("PATH", token, true) == -1) {
                             // Error while setting PATH, print error
                             perror("setpath");
+                            has_error = true;
                         }
                         // Loop through all arguments given to setenv and add to path
                         while((token = strtok(NULL, delim)) != NULL) {
@@ -247,6 +252,7 @@ int main(int argc, char** argv) {
                             if (setenv("PATH", new_path, true) == -1) {
                                 // Print error
                                 perror("setpath");
+                                has_error = true;
                             }
                         }
                     }
@@ -257,12 +263,13 @@ int main(int argc, char** argv) {
                     if (fork_rc == -1) {
                         // Fork failed, print error and be done
                         perror("falsh");
+                        has_error = true;
                     } else if (fork_rc == 0) {
                         // Allocate an array of arguments
                         int len = 1;
+                        // Allocate array of strings for args
                         char** eargs = (char**)malloc(sizeof(char*));
-                        //eargs[0] = (char*)malloc((strlen(token) + 1)*sizeof(char));
-                        //strcpy(eargs[0], token);
+                        // Set first arg equal to command name
                         eargs[0] = token;
                         while ((token = strtok(NULL, delim)) != NULL) {
                             // Increment length
@@ -271,24 +278,28 @@ int main(int argc, char** argv) {
                             if (realloc(eargs, len * sizeof(char*)) == NULL) {
                                 // Reallocation failed
                                 perror(eargs[0]);
+                                has_error = true;
+                                break;
                             }
-                            // Allocate memory for new string
-                            // eargs[len-1] = (char*)malloc((strlen(token) + 1) * sizeof(char));
-                            // strcpy(eargs[len-1], token);
+                            // Assign next arg
                             eargs[len-1] = token;
                         }
                         // NULL-terminate the list
                         if (realloc(eargs, (len+1) * sizeof(char*)) == NULL) {
                             // Reallocation failed
                             perror(eargs[0]);
+                            has_error = true;
                         } else {
                             eargs[len] = NULL;
                         }
 
-                        // exec() the program
-                        execvp(eargs[0], eargs);
+                        if (!has_error) {
+                            // exec() the program
+                            execvp(eargs[0], eargs);
+                        }
                         // This only does anything if an error occurs
                         perror(eargs[0]);
+                        has_error = true;
                         exit(EXIT_FAILURE);
                     } else {
                         // child_status will hold the exit code of the forked child
@@ -327,37 +338,46 @@ int main(int argc, char** argv) {
         if ((rc = is_same_fd(stdout_save, STDOUT_FILENO)) == -1) {
             // An error occurred while stat-ing a file
             perror("falsh");
+            has_error = true;
         } else if (rc == 0 && fsync(STDOUT_FILENO) == -1) {
             // Only flush if NOT the same
             // Failed to flush stdout to disc
             perror("falsh: failed to flush output to disc");
+            has_error = true;
         }
 
         // Check if these are the same
         if ((rc = is_same_fd(stderr_save, STDERR_FILENO)) == -1) {
             // An error occurred while stat-ing a file
             perror("falsh");
+            has_error = true;
         } else if (rc == 0 && fsync(STDERR_FILENO) == -1) {
             // Only flush if NOT the same
             // Failed to flush stderr to disc
             perror("falsh: failed to flush errors to disc");
+            has_error = true;
         }
 
         if (dup2(stdout_save, STDOUT_FILENO) == -1) {
             // Failed to restore stdout
             perror("falsh: failed to restore stdout");
+            has_error = true;
         }
         if (dup2(stderr_save, STDERR_FILENO) == -1) {
             // Failed to restore stderr
             perror("falsh: failed to restore stderr");
+            has_error = true;
         }
 
         // Print the shell prompt:
         // username /current/working/dir $
-        printf("%s %s $ ", getlogin(), cwd);
+        printf("%s%s ", has_error ? ANSI_FG_BRIGHT_RED : ANSI_FG_BRIGHT_BLUE, getlogin());
+        printf("%s%s %s$%s ", ANSI_FG_BRIGHT_BLACK, cwd, ANSI_FG_GREEN, ANSI_RESET);
         // Free malloc'd memory and set line to NULL again
         free(line);
         line = NULL;
+        // Reset has_error
+        has_error = false;
     } while ((nread = getline(&line, &n, stdin)) != -1);
 
     exit(EXIT_SUCCESS);
