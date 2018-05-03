@@ -2,13 +2,13 @@
 #include "stdio.h"
 #include "string.h"
 #include "stdbool.h"
+#include "fcntl.h"
 #include "unistd.h"
 
 const char* const prog_name = "falsh";
 const char* const prog_usage = "Usage: falsh [-h]\n";
 char* cwd = NULL;
 const char* const delim = " \n\t\v\f\r";
-
 
 // find_in_path finds searches the PATH for the given command and
 // stores the full path in buffer if it isn't NULL.
@@ -35,8 +35,19 @@ int main(int argc, char** argv) {
     size_t n = 0;
     ssize_t nread = 0;
 
+    // Store copies of stdout and stderr in case of redirection
+    // The dup() function creates a copy of the given file descriptor
+    const int stdout_save = dup(STDOUT_FILENO);
+    const int stderr_save = dup(STDERR_FILENO);
+
+    // Store if an error occurred
+    bool has_error;
+
     // do-while prints the prompt once before reading input
     do {
+        // Reset has_error
+        has_error = false;
+
         // Only parse input if there is any input
         // This check basically avoids issues on first iteration
         if (line != NULL) {
@@ -45,6 +56,82 @@ int main(int argc, char** argv) {
             // the newline instead of NULL. Replace the newline with NULL
             if (line[strlen(line) - 1] == '\n') {
                 line[strlen(line) - 1] = 0;
+            }
+
+            // Check for redirection before tokenizing
+            // If redirecting, set up redirection
+            // redir_file is a pointer to the filename to redirect to
+            char* redir_file = NULL;
+            if ((redir_file = strstr(line, " > ")) != NULL) {
+                // Terminate line before the redirection arguments
+                // by adding a null terminator
+                redir_file[0] = 0;
+                // Ignore the leading " > " in the string
+                redir_file += 3;
+                // Get the file argument from redir_file as a token
+                char* redir_filename = strtok(redir_file, delim);
+                // Make sure file was the only argument
+                // If not, print an error and prevent further processing
+                // by null-terminating line so the later strtok() call returns null
+                if (strtok(NULL, delim) != NULL) {
+                    fprintf(stderr, "falsh: provide one file name for redirection\n");
+                    line[0] = 0;
+                } else {
+                    // Otherwise, set up redirection
+                    // Build strings for the file names
+                    int name_len = strlen(redir_filename);
+                    char* out_file_name = (char*)malloc((name_len + 5) * sizeof(char));
+                    char* err_file_name = (char*)malloc((name_len + 5) * sizeof(char));
+                    // Copy the name prefix to both strings using strncpy
+                    strcpy(out_file_name, redir_filename);
+                    strcpy(err_file_name, redir_filename);
+                    // Append prefixes to the file names
+                    strcat(out_file_name, ".out");
+                    strcat(err_file_name, ".err");
+                    // Open file descriptors for each file
+                    // creat() takes the path to the file and mode arguments
+                    // In this case, the files are created with 0644 permissions
+                    int out_file = creat(out_file_name, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+                    // Check if file opening failed, error if so
+                    if (out_file == -1) {
+                        // Print the error and disable continuing by truncating line
+                        perror("falsh: redirect (out)");
+                        has_error = true;
+                    } else {
+                        int err_file = creat(err_file_name, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+                        if (err_file == -1) {
+                            // Print the error and mark that an error occurred
+                            perror("falsh: redirect (err)");
+                            has_error = true;
+                            // Close the out file, since we won't use it
+                            close(out_file);
+                        } else {
+                            // No errors, redirect outputs
+                            // dup2() copies the file descriptor of the first
+                            // argument to the one at the second argument
+                            if (dup2(out_file, STDOUT_FILENO) == -1) {
+                                // Failed to redirect stdout file descriptor
+                                perror("falsh: failed to redirect stdout");
+                            } else if (dup2(err_file, STDERR_FILENO) == -1) {
+                                // Failed to redirect stderr file descriptor
+                                perror("falsh: failed to redirect stderr");
+                            }
+                            // Don't need the file descriptors after copying,
+                            // close them now.
+                            close(out_file);
+                            close(err_file);
+                        }
+                    }
+
+                    if (has_error) {
+                        // Force command parsing to not happen by truncating line
+                        line[0] = 0;
+                    }
+                    
+                    // Free allocated memory
+                    free(out_file_name);
+                    free(err_file_name);
+                }
             }
 
             // Tokenize the input string
@@ -107,9 +194,36 @@ int main(int argc, char** argv) {
         }
         cwd = getcwd(cwd, 0);
 
+        // Restore stdout and stderr
+        // Don't need to check if they were changed, because
+        // dup2()-ing something to itself does nothing
+        // What happens if I print an error to stderr with the
+        // redirection, because I can't undo the redirection?
+
+        // First, flush the buffers
+        if (fsync(STDOUT_FILENO) == -1) {
+            // Failed to flush stdout to disc
+            perror("falsh: failed to flush output to disc");
+        }
+        if (fsync(STDERR_FILENO) == -1) {
+            // Failed to flush stderr to disc
+            perror("falsh: failed to flush errors to disc");
+        }
+        if (dup2(stdout_save, STDOUT_FILENO) == -1) {
+            // Failed to restore stdout
+            perror("falsh: failed to restore stdout");
+        }
+        if (dup2(stderr_save, STDERR_FILENO) == -1) {
+            // Failed to restore stderr
+            perror("falsh: failed to restore stderr");
+        }
+
         // Print the shell prompt:
         // username /current/working/dir $
         printf("%s %s $ ", getlogin(), cwd);
+        // Free malloc'd memory and set line to NULL again
+        free(line);
+        line = NULL;
     } while ((nread = getline(&line, &n, stdin)) != -1);
 
     exit(EXIT_SUCCESS);
