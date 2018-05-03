@@ -10,13 +10,6 @@ const char* const prog_usage = "Usage: falsh [-h]\n";
 char* cwd = NULL;
 const char* const delim = " \n\t\v\f\r";
 
-// find_in_path finds searches the PATH for the given command and
-// stores the full path in buffer if it isn't NULL.
-// Returns true if the command is in the PATH, false otherwise.
-bool find_in_path(char** buffer, const char* const command) {
-    return false;
-}
-
 int main(int argc, char** argv) {
     // Error if more than two args or if the second arg isn't help
     if (argc > 2 || (argc == 2 && strcmp(argv[1], "-h") != 0)) {
@@ -42,6 +35,12 @@ int main(int argc, char** argv) {
 
     // Store if an error occurred
     bool has_error;
+
+    // Initially set PATH to /bin
+    if (setenv("PATH", "/bin", true) == -1) {
+        // Print error if error occurred
+        perror("falsh: PATH");
+    }
 
     // do-while prints the prompt once before reading input
     do {
@@ -182,6 +181,45 @@ int main(int argc, char** argv) {
                         // The argument to perror() is the prefix to the error message
                         perror("cd");
                     }
+                } else if (strcmp(token, "setpath") == 0) {
+                    if ((token = strtok(NULL, delim)) == NULL) {
+                        fprintf(stderr, "setpath: need at least one argument");
+                    } else {
+                        if (setenv("PATH", token, true) == -1) {
+                            // Error while setting PATH, print error
+                            perror("setpath");
+                        }
+                        // Loop through all arguments given to setenv and add to path
+                        while((token = strtok(NULL, delim)) != NULL) {
+                            // Get the current value of PATH
+                            char* path = getenv("PATH");
+                            // Allocate a string to append to
+                            // If PATH was set in a previous iteration, we want
+                            // to add a ':' between the paths, so add another
+                            // character to fit that.
+                            char* new_path = (char*)malloc((strlen(token) +
+                                (path == NULL ? 1 : strlen(path) + 2)) * sizeof(char));
+                            // Add null terminator to first element to ensure
+                            // strcat works correctly even if this is the first
+                            // directory in PATH.
+                            new_path[0] = 0;
+                            // Init new_path to the previous iteration of PATH,
+                            // if applicable
+                            if (path != NULL) {
+                                // Copy the previous path to new_path
+                                strcpy(new_path, path);
+                                // Add a colon to separate paths
+                                strcat(new_path, ":");
+                            }
+                            // Concatonate the current PATH directory to PATH
+                            strcat(new_path, token);
+                            // Set new PATH - check for errors
+                            if (setenv("PATH", new_path, true) == -1) {
+                                // Print error
+                                perror("setpath");
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -201,14 +239,14 @@ int main(int argc, char** argv) {
         // redirection, because I can't undo the redirection?
 
         // First, flush the buffers
-        if (fsync(STDOUT_FILENO) == -1) {
+        /*if (fsync(STDOUT_FILENO) == -1) {
             // Failed to flush stdout to disc
             perror("falsh: failed to flush output to disc");
         }
         if (fsync(STDERR_FILENO) == -1) {
             // Failed to flush stderr to disc
             perror("falsh: failed to flush errors to disc");
-        }
+        }*/
         if (dup2(stdout_save, STDOUT_FILENO) == -1) {
             // Failed to restore stdout
             perror("falsh: failed to restore stdout");
