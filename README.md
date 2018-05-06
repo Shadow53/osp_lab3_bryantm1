@@ -12,3 +12,6 @@ pwd - print the current working directory
 cd [dir] - change directory to the given directory, or `$HOME` if not specified
 setpath <dir> [dir ...] - set `$PATH` equal to the directory or directories given
 
+Redirection: Standard and error output can be redirected by adding a `>` and a filename after your command. Standard output will be directed to `filename.out` and errors to `filename.err`.
+
+Example: `pwd > working_directory`
